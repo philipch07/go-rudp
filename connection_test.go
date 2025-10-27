@@ -2,6 +2,7 @@ package rudp
 
 import (
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -38,25 +39,39 @@ func echoServer(cfg *echoServerConfig) (chan<- struct{}, <-chan struct{}) {
 		return shutDownCh, doneCh
 	}
 
+	// Close the listener only when shutdown is requested.
 	go func() {
-		defer close(doneCh)
+		<-shutDownCh
+		_ = l.Close()
+	}()
+
+	var wg sync.WaitGroup
+
+	go func() {
+		defer func() {
+			wg.Wait()
+			cfg.log.Debug("server done")
+			close(doneCh)
+		}()
 
 		for {
 			s, err := l.Accept()
 			if err != nil {
-				break
+				// listener closed or fatal error
+				return
 			}
 
-			go func() {
-				defer l.Close()
+			wg.Add(1)
+			go func(s *Server) {
+				defer wg.Done()
 				defer s.Close()
 
-				// assume 1 channel per client
 				serverCh, err := s.AcceptChannel()
 				if !assert.NoError(cfg.t, err, "should succeed") {
 					return
 				}
 
+				// Close the channel when shutdown is requested.
 				go func() {
 					<-shutDownCh
 					serverCh.Close()
@@ -65,25 +80,20 @@ func echoServer(cfg *echoServerConfig) (chan<- struct{}, <-chan struct{}) {
 				assert.Equal(cfg.t, cfg.channelID, serverCh.StreamIdentifier(), "should match")
 
 				buf := make([]byte, 64*1024)
-				var nReceived int
 				for {
 					n, err := serverCh.Read(buf)
 					if err != nil {
 						break
 					}
-
 					msg := string(buf[:n])
 					cfg.log.Debugf("server received %s", msg)
-					nReceived++
 
-					n, err = serverCh.Write([]byte(msg))
+					nw, err := serverCh.Write([]byte(msg))
 					assert.NoError(cfg.t, err, "should succeed")
-					assert.Equal(cfg.t, len(msg), n, "should match")
+					assert.Equal(cfg.t, len(msg), nw, "should match")
 				}
-			}()
+			}(s)
 		}
-
-		cfg.log.Debug("server done")
 	}()
 
 	return shutDownCh, doneCh
@@ -103,10 +113,7 @@ func echoClient(cfg *echoClientConfig) <-chan struct{} {
 			LoggerFactory: cfg.loggerFactory,
 		})
 		assert.NoError(cfg.t, err, "should succeed")
-		defer func() {
-			err := c.Close()
-			assert.NoError(cfg.t, err, "should succeed")
-		}()
+		defer func() { _ = c.Close() }()
 
 		clientCh, err := c.OpenChannel(cfg.channelID, Config{})
 		if !assert.NoError(cfg.t, err, "should succeed") {
@@ -125,7 +132,7 @@ func echoClient(cfg *echoClientConfig) <-chan struct{} {
 		}
 
 		buf := make([]byte, 64*1024)
-		for i := 0; i < len(msgs); i++ {
+		for i := range msgs {
 			msg := msgs[i]
 			cfg.log.Debugf("client(%d) sending: %s", cfg.id, msg)
 			clientCh.Write([]byte(msg))
@@ -180,8 +187,7 @@ func TestConnectionEchoMulti(t *testing.T) {
 	})
 
 	var clientDoneChs []<-chan struct{}
-
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		clientDoneCh := echoClient(&echoClientConfig{
 			t:             t,
 			id:            i,

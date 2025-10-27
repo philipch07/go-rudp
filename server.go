@@ -15,7 +15,7 @@ type Server struct {
 	conn          *serverConn
 	bufferSize    int
 	assoc         *sctp.Association
-	closed        atomic.Value // bool
+	closed        atomic.Bool
 	onClosed      func()
 	loggerFactory logging.LoggerFactory
 	log           logging.LeveledLogger
@@ -32,10 +32,7 @@ type serverConfig struct {
 
 func newServer(config *serverConfig) (*Server, error) {
 	log := config.loggerFactory.NewLogger("rudp-s")
-	svrConn := newServerConn(
-		config.conn,
-		config.remAddr,
-		log)
+	svrConn := newServerConn(config.conn, config.remAddr, log)
 
 	s := &Server{
 		conn:          svrConn,
@@ -48,7 +45,7 @@ func newServer(config *serverConfig) (*Server, error) {
 	s.closed.Store(false)
 
 	go func() {
-		s.log.Debug("handlshake started")
+		s.log.Debug("handshake started")
 		var err error
 		s.assoc, err = sctp.Server(sctp.Config{
 			LoggerFactory:        s.loggerFactory,
@@ -66,10 +63,10 @@ func newServer(config *serverConfig) (*Server, error) {
 }
 
 func (s *Server) handleInbound(data []byte) {
-	if s.closed.Load().(bool) {
+	if s.closed.Load() {
 		return
 	}
-	s.log.Debugf("Server: handleInboud: %d bytes", len(data))
+	s.log.Debugf("Server: handleInbound: %d bytes", len(data))
 	s.conn.handleInbound(data)
 }
 
@@ -82,7 +79,7 @@ func (s *Server) AcceptChannel() (Channel, error) {
 		return nil, err
 	}
 
-	dc := &dataChannel{
+	return &dataChannel{
 		dc: dcepCh,
 		config: Config{
 			ChannelType:          cfg.ChannelType,
@@ -92,19 +89,19 @@ func (s *Server) AcceptChannel() (Channel, error) {
 			Label:                cfg.Label,
 			Protocol:             cfg.Protocol,
 		},
-	}
-
-	return dc, nil
+	}, nil
 }
 
 // Close ...
 func (s *Server) Close() error {
 	var err error
-	if !s.closed.Load().(bool) {
+	if !s.closed.Load() {
 		err = s.conn.Close()
 		s.closed.Store(true)
 		time.AfterFunc(8*time.Second, func() {
-			s.onClosed()
+			if s.onClosed != nil {
+				s.onClosed()
+			}
 		})
 	}
 	return err

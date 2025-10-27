@@ -85,7 +85,7 @@ func (c *serverConn) handleInbound(data []byte) {
 		return
 	}
 
-	c.log.Debugf("serverConn: handleInboud: %d bytes", len(data))
+	c.log.Debugf("serverConn: handleInbound: %d bytes", len(data))
 	buf := make([]byte, len(data))
 	copy(buf, data)
 	c.readCh <- buf

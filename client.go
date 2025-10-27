@@ -29,7 +29,12 @@ type Client struct {
 
 // Dial ...
 func Dial(config *DialConfig) (*Client, error) {
-	log := config.LoggerFactory.NewLogger("rudp-c")
+	lf := config.LoggerFactory
+	if lf == nil {
+		lf = logging.NewDefaultLoggerFactory()
+	}
+	log := lf.NewLogger("rudp-c")
+
 	conn, err := net.DialUDP(config.Network, config.LocalAddr, config.RemoteAddr)
 	if err != nil {
 		return nil, err
@@ -49,7 +54,7 @@ func Dial(config *DialConfig) (*Client, error) {
 
 	log.Debug("instantiating SCTP client")
 	assoc, err := sctp.Client(sctp.Config{
-		LoggerFactory:        config.LoggerFactory,
+		LoggerFactory:        lf,
 		MaxReceiveBufferSize: uint32(config.BufferSize), // 0: defaults to 1MB
 		NetConn:              conn,
 	})
@@ -61,7 +66,7 @@ func Dial(config *DialConfig) (*Client, error) {
 	c := &Client{
 		conn:          conn,
 		assoc:         assoc,
-		loggerFactory: config.LoggerFactory,
+		loggerFactory: lf,
 		log:           log,
 	}
 
@@ -85,12 +90,7 @@ func (c *Client) OpenChannel(chID uint16, cfg Config) (Channel, error) {
 		return nil, err
 	}
 
-	dc := &dataChannel{
-		dc:     dcepCh,
-		config: cfg,
-	}
-
-	return dc, nil
+	return &dataChannel{dc: dcepCh, config: cfg}, nil
 }
 
 // Close ...

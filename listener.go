@@ -36,17 +36,21 @@ type Listener struct {
 
 // Listen ...
 func Listen(config *ListenConfig) (*Listener, error) {
-	loggerFactory := config.LoggerFactory
-	log := loggerFactory.NewLogger("rudp-l")
+	lf := config.LoggerFactory
+	if lf == nil {
+		lf = logging.NewDefaultLoggerFactory()
+	}
+	log := lf.NewLogger("rudp-l")
 
 	var locAddr *net.UDPAddr
 	if config.LocalAddr == nil {
-		locAddr = &net.UDPAddr{
-			IP:   nil,
-			Port: defaultServerPort,
-		}
+		locAddr = &net.UDPAddr{IP: nil, Port: defaultServerPort}
 	} else {
-		locAddr = config.LocalAddr.(*net.UDPAddr)
+		ua, ok := config.LocalAddr.(*net.UDPAddr)
+		if !ok {
+			return nil, fmt.Errorf("LocalAddr must be *net.UDPAddr; got %T", config.LocalAddr)
+		}
+		locAddr = ua
 		if locAddr.Port == 0 {
 			locAddr.Port = defaultServerPort
 		}
@@ -58,12 +62,10 @@ func Listen(config *ListenConfig) (*Listener, error) {
 	}
 	if config.BufferSize > 0 {
 		log.Debugf("setting buffer size to %d\n", config.BufferSize)
-		err = conn.SetReadBuffer(config.BufferSize)
-		if err != nil {
+		if err = conn.SetReadBuffer(config.BufferSize); err != nil {
 			return nil, err
 		}
-		err = conn.SetWriteBuffer(config.BufferSize)
-		if err != nil {
+		if err = conn.SetWriteBuffer(config.BufferSize); err != nil {
 			return nil, err
 		}
 	}
@@ -82,7 +84,7 @@ func Listen(config *ListenConfig) (*Listener, error) {
 		acceptCh:      make(chan *Server, backlog),
 		closeCh:       make(chan struct{}),
 		log:           log,
-		loggerFactory: loggerFactory,
+		loggerFactory: lf,
 	}
 
 	go l.run()
