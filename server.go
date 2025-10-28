@@ -51,6 +51,7 @@ func newServer(config *serverConfig) (*Server, error) {
 			LoggerFactory:        s.loggerFactory,
 			MaxReceiveBufferSize: uint32(s.bufferSize),
 			NetConn:              s.conn,
+			MaxMessageSize:       1073741823, // 1<<30 - 1 (Pion default)
 		})
 		if err != nil {
 			s.log.Error(err.Error())

@@ -57,6 +57,7 @@ func Dial(config *DialConfig) (*Client, error) {
 		LoggerFactory:        lf,
 		MaxReceiveBufferSize: uint32(config.BufferSize), // 0: defaults to 1MB
 		NetConn:              conn,
+		MaxMessageSize:       1073741823, // 1<<30 - 1 (Pion default)
 	})
 	if err != nil {
 		return nil, err
