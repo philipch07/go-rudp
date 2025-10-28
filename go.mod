@@ -5,7 +5,7 @@ go 1.24
 require (
 	github.com/pion/datachannel v1.5.10
 	github.com/pion/logging v0.2.4
-	github.com/pion/sctp v1.8.40
+	github.com/pion/sctp v1.8.41-0.20251025203913-bb8671debe5c
 	github.com/stretchr/testify v1.11.1
 )
 
